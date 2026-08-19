@@ -35,7 +35,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
 const PORT = 9481
 
-const want = process.argv[2] ?? 'cv'
+const ALL = process.argv.includes('--all')
+const BUDGET = ALL ? 0 : 12
+const want = process.argv.find((a) => !a.startsWith('--') && !a.endsWith('.mjs') && !a.includes('/node')) ?? 'cv'
 const bench = join(ROOT, 'tests', 'fixtures', 'bench', `${want}.pdf`)
 const file = existsSync(bench) ? bench : join(ROOT, 'tests', 'fixtures', 'letter.pdf')
 const label = existsSync(bench) ? want : 'letter (fallback — benchmarks not present)'
@@ -46,24 +48,56 @@ const child = launchApp({ cwd: ROOT, port: PORT, userDataDir: '/tmp/textfid-ud' 
 const cdp = await connect({ port: PORT })
 await sleep(1800)
 
+/*
+ * PICKING THE RUNS.
+ *
+ * This used to walk down the page and stop at the first twelve runs it found,
+ * one per scanline. On a real document that spends every slot on the same thing:
+ * the CV's twelve were nine body-copy lines in one face, the check never reached
+ * the lower half of the page, and it never once exercised a second column beside
+ * a line it had already taken. Twelve passes, and what they proved was one fact
+ * twelve times.
+ *
+ * What decides whether an edit keeps the print's typeface is the FACE, not the
+ * line. So sweep the whole page, then spend the budget on distinct
+ * (face, size, weight) signatures first — every typeface on the page gets a
+ * turn before any of them gets a second one. Leftover slots go to the runs
+ * furthest down the page, which is the half the old scan could never see.
+ *
+ * `--all` drops the budget entirely and retypes every distinct run, which is
+ * minutes rather than seconds and is meant for a human, not for CI.
+ */
 const SCAN = `(async () => {
   const S = window.__reshapedpdf, st = () => S.state()
   st().setZoom(1)
   await new Promise(r => setTimeout(r, 500))
   const { w: PW, h: PH } = S.pageSize(0)
-  const runs = []
-  for (let y = 40; y < PH - 60 && runs.length < 12; y += 7) {
-    for (let x = 60; x < PW - 80; x += 22) {
+  const BUDGET = ${BUDGET}
+  const found = []
+  for (let y = 40; y < PH - 40; y += 7) {
+    for (let x = 60; x < PW - 60; x += 22) {
       const f = await S.fontAt(0, x, y).catch(() => null)
       const t = f && (f.text || '').trim()
       if (!t || t.length < 4) continue
-      if (runs.some(r => r.text === t)) continue
-      runs.push({ text: t, size: f.size, face: f.loadedName ?? null,
-        std: f.stdFont ?? null, baseline: f.baseline ?? null, rect: f.rect })
-      break
+      if (found.some(r => r.text === t)) continue
+      const face = f.loadedName ?? null
+      found.push({ text: t, size: f.size, face,
+        std: f.stdFont ?? null, baseline: f.baseline ?? null, rect: f.rect,
+        bold: !!f.bold, italic: !!f.italic,
+        // what the document's own face cannot set — a non-empty list is the
+        // legitimate reason for a stand-in, and naming the characters turns
+        // "it fell back" into something actionable
+        gaps: face ? (S.faceGaps(face, t) || []) : null })
     }
   }
-  return { PW, PH, runs }
+  // one per signature first, then the rest bottom-up
+  const seen = new Set(), runs = []
+  const sig = (r) => [r.face ?? r.std ?? 'palette', r.size.toFixed(1), r.bold, r.italic].join('|')
+  for (const r of found) { const k = sig(r); if (!seen.has(k)) { seen.add(k); runs.push(r) } }
+  const rest = found.filter(r => !runs.includes(r)).sort((a, b) => b.rect.y - a.rect.y)
+  for (const r of rest) { if (BUDGET && runs.length >= BUDGET) break; runs.push(r) }
+  return { PW, PH, runs: BUDGET ? runs.slice(0, Math.max(BUDGET, seen.size)) : runs,
+           total: found.length, faces: seen.size }
 })()`
 
 const ONE = (run) => `(async () => {
@@ -111,10 +145,14 @@ const ONE = (run) => `(async () => {
 })()`
 
 let results = []
+let wanted = []
 try {
   await cdp.run(`window.__reshapedpdf.openBase64(${JSON.stringify(b64)}, ${JSON.stringify(want + '.pdf')})`)
   await sleep(3500)
   const scan = await cdp.run(SCAN)
+  console.log(`  scanned ${scan.total} distinct runs in ${scan.faces} face/size/weight combination(s)` +
+              `; retyping ${scan.runs.length}${BUDGET && scan.total > scan.runs.length ? ' (pass --all for every one)' : ''}`)
+  wanted = scan.runs
   for (const run of scan.runs) results.push(await cdp.run(ONE(run)))
 } finally {
   cdp.close()
@@ -157,7 +195,18 @@ for (const r of results) {
   }
   const faceOk = r.wantFace ? r.gotFace === r.wantFace : (r.wantStd ? r.gotStd === r.wantStd : true)
   if (problems.length) { bad++; console.log(`  ${JSON.stringify(r.text).padEnd(30)} FAIL  ${problems.join('; ')}`) }
-  else if (!faceOk) { gaps++; console.log(`  ${JSON.stringify(r.text).padEnd(30)} GAP   set in a stand-in (wanted ${r.wantFace ?? r.wantStd}, got ${r.gotFace ?? r.gotStd ?? 'palette'})`) }
+  else if (!faceOk) {
+    // A stand-in is legitimate only when the document's own face genuinely
+    // cannot set the words — a ligature borrowed from another font, a subset
+    // missing a glyph. If the face covers every character and the edit still
+    // came back in something else, that is the regression Anton means by
+    // "changed its font", and it fails rather than being counted as a gap.
+    const src = wanted.find((w) => w.text === r.text)
+    const cause = src && src.gaps && src.gaps.length ? src.gaps : null
+    const got = `wanted ${r.wantFace ?? r.wantStd}, got ${r.gotFace ?? r.gotStd ?? 'palette'}`
+    if (cause) { gaps++; console.log(`  ${JSON.stringify(r.text).padEnd(30)} GAP   ${got} — its face has no ${cause.map((c) => JSON.stringify(c)).join(', ')}`) }
+    else { bad++; console.log(`  ${JSON.stringify(r.text).padEnd(30)} FAIL  ${got}, though that face covers every character`) }
+  }
   else { ok++; console.log(`  ${JSON.stringify(r.text).padEnd(30)} ok    ${r.gotSize}pt, own face, baseline exact${notes.length ? ' · ' + notes.join('; ') : ''}`) }
 }
 console.log(`\n${ok} sharp · ${gaps} in a stand-in face · ${bad} broken, of ${ok + gaps + bad} runs on ${label}`)

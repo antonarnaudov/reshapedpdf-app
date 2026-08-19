@@ -12,12 +12,13 @@ import { getSamplingCanvas, renderPageWithoutText } from '../pdf/render'
 import { blendObjects } from '../core/blend'
 import { makeBlendedPatch, detectInkBands, makeBrushPatch } from '../pdf/patch'
 import { runFontInfo } from '../pdf/fontinfo'
+import { faceCoversChar } from '../pdf/embeddedfonts'
 import { searchDoc, invalidateSearchCache } from '../pdf/textsearch'
 import { wrapLines } from '../core/measure'
 import { detectAlign, peelers } from './ObjectsLayer'
 import { peelPage } from '../core/peel'
 import { cloneTextLook } from '../core/retype'
-import { FONTS, FONT_IDS } from '../core/types'
+import { FONTS, FONT_IDS, stdFontStack, resetStdFontStackCache } from '../core/types'
 import { TopBar } from './TopBar'
 import { ToolRail } from './ToolRail'
 import { OptionsBar } from './OptionsBar'
@@ -351,6 +352,22 @@ function useDebugHooks(): void {
       fontAt: (pageIdx: number, x: number, y: number) => {
         const d = activeDoc()
         return d ? runFontInfo(d.pages[pageIdx], x, y) : null
+      },
+      /* Which characters of this text the document's own face cannot set.
+         Empty means the edit keeps the print's typeface; anything in it and the
+         edit falls back to a palette face, which is the one regression a reader
+         always notices. Whitespace is excluded for the same reason faceCovers
+         excludes it — the exporter sets it in the metric twin. */
+      /* Which family a base-14 run is actually drawn in here — the answer
+         differs by platform, which is the whole point of measuring it. */
+      stdStack: (stdFont: string) => { resetStdFontStackCache(); return stdFontStack(stdFont) ?? null },
+      faceGaps: (family: string, text: string) => {
+        const out: string[] = []
+        for (const ch of text) {
+          if (/\s/.test(ch)) continue
+          if (!faceCoversChar(family, ch) && !out.includes(ch)) out.push(ch)
+        }
+        return out
       },
       peelElements: async (pageIdx: number) => {
         const d = activeDoc()

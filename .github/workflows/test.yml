@@ -13,16 +13,22 @@ concurrency:
 
 jobs:
   suite:
-    # SHARDED, because thirty-four of the forty checks boot a real Electron app
-    # and the whole sequence overran a 45-minute job every time — the badge on
-    # this repo had never gone green on a suite that passes locally. Four shards
-    # run the same forty checks in parallel; nothing is skipped, and the split is
+    # SHARDED, because thirty-six of the forty-two checks boot a real Electron
+    # app and the whole sequence overran a 45-minute job every time — the badge on
+    # this repo had never gone green on a suite that passes locally. Six shards
+    # run the same checks in parallel; nothing is skipped, and the split is
     # derived from the `test` script itself so a new suite cannot be forgotten.
+    #
+    # Six rather than four because round-robin balances by COUNT, not by minutes,
+    # and the durations are not close — the first four-way split had one shard
+    # done in five minutes while another was still going at thirty. More, smaller
+    # shards make the slowest one shorter without needing a table of timings that
+    # would go stale.
     strategy:
       fail-fast: false   # one red shard must not hide what the others found
       matrix:
-        shard: [1, 2, 3, 4]
-    name: suite ${{ matrix.shard }}/4
+        shard: [1, 2, 3, 4, 5, 6]
+    name: suite ${{ matrix.shard }}/6
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -52,7 +58,7 @@ jobs:
       # SKIP with a note rather than fail, so CI stays honest instead of
       # green-by-omission.
       - name: Run shard
-        run: xvfb-run --auto-servernum node scripts/run-suites.mjs ${{ matrix.shard }} 4
+        run: xvfb-run --auto-servernum node scripts/run-suites.mjs ${{ matrix.shard }} 6
 
       - name: Keep the artefacts of a failed run
         if: failure()
@@ -65,5 +71,9 @@ jobs:
           path: |
             tests/.artifacts/**
             !tests/.artifacts/**/*-profile/**
+          # tests/.artifacts is a HIDDEN directory, and since v4.4 this action
+          # skips those by default — the first failing run uploaded nothing at
+          # all and said so in a line nobody would read.
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7

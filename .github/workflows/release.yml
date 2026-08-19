@@ -119,3 +119,37 @@ jobs:
             release/latest*.yml
           if-no-files-found: warn
           retention-days: 14
+
+  # ------------------------------------------------------------------ checksums
+  # An unsigned installer gives a user nothing to verify against. Until there are
+  # certificates, a published SHA256 is the only way for someone to tell the file
+  # they downloaded from the file this workflow built — which matters most for
+  # exactly the builds macOS and SmartScreen are already warning them about.
+  #
+  # It runs after all three platforms, because the point is ONE list covering
+  # every installer in the release; a per-runner file would leave a reader
+  # checking three of them and wondering which covers the download they have.
+  checksums:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hash every published installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dl && cd dl
+          # Only the installers. The blockmaps and latest*.yml are the updater's
+          # own bookkeeping, and listing them invites people to verify files they
+          # never downloaded.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.dmg' --pattern '*.zip' --pattern '*.exe' \
+            --pattern '*.AppImage' --pattern '*.deb'
+          sha256sum * | sort -k2 > ../SHA256SUMS.txt
+          cd ..
+          echo "--- SHA256SUMS.txt ---"; cat SHA256SUMS.txt
+          test -s SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber

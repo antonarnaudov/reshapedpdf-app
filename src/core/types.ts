@@ -400,16 +400,101 @@ export const FONTS: Record<FontId, FontDef> = {
 export const FONT_IDS = Object.keys(FONTS) as FontId[]
 
 /**
- * CSS font-family for a retype that was lifted off a base-14 font — leads with
- * the real system font (present on macOS/most OSes) so the on-screen text
- * matches the print, falling back to the bundled metric twin.
+ * CSS font-family for a retype that was lifted off a base-14 font.
+ *
+ * A base-14 font is not IN the PDF — the file just names Helvetica and every
+ * reader supplies its own. So the screen has to supply one too, and it should be
+ * the same metrics the reader will use, or the edit is set at a width the
+ * exported file will not reproduce.
+ *
+ * Leading with the real system face is the best answer WHERE IT EXISTS: on macOS
+ * Helvetica is the genuine article and the retype is indistinguishable from the
+ * print beside it. The trap is that "does it exist" cannot be asked directly.
+ * fontconfig does not report a missing family, it SUBSTITUTES one — ask a bare
+ * Linux box for Helvetica and it hands back DejaVu Sans, which is a good face and
+ * nothing like Helvetica's metrics. CSS then never reaches the bundled twin,
+ * because as far as the browser is concerned the first name matched.
+ *
+ * That is not theoretical. It is why the erase suite's `panel-light` case passed
+ * on every machine here and failed on the CI runner: the reprint came back 1.84pt
+ * off its baseline with 71% of the ink, and the difference between the two boxes
+ * was DejaVu standing in for Helvetica without saying so.
+ *
+ * So ask the question that actually matters — not "is Helvetica installed" but
+ * "does the face this browser calls Helvetica have Helvetica's metrics" — by
+ * measuring it against the bundled twin, which is a metric clone by construction.
+ * Where they agree, use the system face; where they do not, use the twin. Both
+ * answers are then correct on every platform, and the export matches the screen.
+ *
+ * There is a second reason, and it is the one that produces the numbers above:
+ * measure.ts does NOT consult this function. `fontSpec` measures a base-14 run in
+ * FONT_STACKS, which leads with the bundled twin, while the DOM draws it in
+ * whatever this returns. On macOS those are the same metrics and the split is
+ * invisible. Where they are not, the editor lays out a box using one face and
+ * paints another inside it, which is a baseline in the wrong place and ink that
+ * does not fill its own box — 1.84pt and 71%, exactly. Returning the twin when
+ * the system face is not one makes the two agree by construction.
  */
+interface StdStack { system: string; twin: string; probe: string }
+const STD_STACKS: Record<string, StdStack> = {
+  courier: { system: "'Courier New', Courier, 'Cousine', monospace", twin: "'Cousine', monospace", probe: 'Cousine' },
+  times: { system: "'Times New Roman', Times, 'Tinos', serif", twin: "'Tinos', serif", probe: 'Tinos' },
+  helvetica: { system: "Helvetica, 'Helvetica Neue', Arial, 'Arimo', sans-serif", twin: "'Arimo', sans-serif", probe: 'Arimo' },
+}
+
+/** Measured once per face per session; measuring is cheap but not free. */
+const metricSafe = new Map<string, boolean>()
+
+/* A long mixed string, because two faces can agree on any one glyph by
+   coincidence — Helvetica and DejaVu both set a lowercase l at the same width.
+   Over sixty characters of mixed case, digits and punctuation they cannot. */
+const PROBE_TEXT = 'Hamburgefonstiv 0123456789 THE quick brown fox; jumps—over? {[(#@&%)]}'
+
+function systemFaceIsMetricTwin(key: string, def: StdStack): boolean {
+  const cached = metricSafe.get(key)
+  if (cached !== undefined) return cached
+  /* The twin is a webfont. Ask before the browser has parsed it and the probe
+     measures the DEFAULT face under its name, concludes "not a twin", and caches
+     that forever — turning a transient timing detail into a permanent wrong
+     answer. So when it is not there yet, answer as this code always used to,
+     WITHOUT caching, and let a later call measure properly. */
+  if (typeof document !== 'undefined' && document.fonts && !document.fonts.check(`40px '${def.probe}'`)) return true
+  let ok = false
+  try {
+    const c = document.createElement('canvas').getContext('2d')
+    if (c) {
+      // The system stack minus the twin and the generic — so this measures what
+      // the platform ACTUALLY supplies for the name, with nothing to fall back
+      // to but the browser default, which is itself a valid "not the twin".
+      const sysOnly = def.system.split(',').map((f) => f.trim())
+        .filter((f) => !f.includes(def.probe) && !/^(sans-serif|serif|monospace)$/.test(f)).join(', ')
+      c.font = `40px ${sysOnly}`
+      const sys = c.measureText(PROBE_TEXT).width
+      c.font = `40px '${def.probe}'`
+      const twin = c.measureText(PROBE_TEXT).width
+      // 0.5% over ~70 characters. Real metric clones (Arimo/Arial/Helvetica,
+      // Tinos/Times New Roman, Cousine/Courier New) land inside a tenth of that;
+      // an unrelated face substituted by fontconfig is percent-scale away.
+      ok = sys > 0 && twin > 0 && Math.abs(sys - twin) / twin < 0.005
+    }
+  } catch {
+    ok = false
+  }
+  metricSafe.set(key, ok)
+  return ok
+}
+
 export function stdFontStack(stdFont: string): string | undefined {
   const n = stdFont.toLowerCase()
-  if (n.startsWith('courier')) return "'Courier New', Courier, 'Cousine', monospace"
-  if (n.startsWith('times')) return "'Times New Roman', Times, 'Tinos', serif"
-  if (n.startsWith('helvetica')) return "Helvetica, 'Helvetica Neue', Arial, 'Arimo', sans-serif"
-  return undefined
+  const key = n.startsWith('courier') ? 'courier' : n.startsWith('times') ? 'times' : n.startsWith('helvetica') ? 'helvetica' : ''
+  if (!key) return undefined
+  const def = STD_STACKS[key]
+  return systemFaceIsMetricTwin(key, def) ? def.system : def.twin
+}
+
+/** Test seam: forget what was measured, so a probe can re-ask. */
+export function resetStdFontStackCache(): void {
+  metricSafe.clear()
 }
 
 export const FONT_STACKS: Record<FontId, string> = Object.fromEntries(

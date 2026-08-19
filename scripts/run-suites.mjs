@@ -51,15 +51,39 @@ const mine = suites.filter((_, i) => i % total === index - 1)
 
 console.log(`shard ${index}/${total} — ${prelude.length} prelude step(s) then ${mine.length} suite(s)`)
 const started = Date.now()
-for (const step of [...prelude, ...mine]) {
+
+const run = (step) => {
   const t0 = Date.now()
   process.stdout.write(`\n=== ${step} ===\n`)
   try {
     execSync(`npm run ${step}`, { cwd: ROOT, stdio: 'inherit' })
+    console.log(`  (${step} took ${Math.round((Date.now() - t0) / 1000)}s)`)
+    return true
   } catch {
-    console.error(`\n✗ ${step} failed after ${Math.round((Date.now() - t0) / 1000)}s`)
-    process.exit(1)
+    console.error(`\n\u2717 ${step} FAILED after ${Math.round((Date.now() - t0) / 1000)}s`)
+    return false
   }
-  console.log(`  (${step} took ${Math.round((Date.now() - t0) / 1000)}s)`)
 }
-console.log(`\nshard ${index}/${total} green in ${Math.round((Date.now() - started) / 60000)} min`)
+
+// The prelude is different: nothing downstream can mean anything if the build
+// or the typecheck failed, so that one does stop the shard.
+for (const step of prelude) if (!run(step)) process.exit(1)
+
+/* The suites do NOT stop each other.
+ *
+ * The first sharded run died on test:erase three suites in, and the five behind
+ * it never ran — so what we learned from a twelve-minute job was one failure and
+ * five unknowns, and the next push would have found the next one the same way,
+ * one round trip at a time. These suites are independent; there is no reason a
+ * fault in one should cost us the answer from another. Run them all, report
+ * every failure together, and fail the shard at the end. */
+const failed = []
+for (const step of mine) if (!run(step)) failed.push(step)
+
+const mins = Math.round((Date.now() - started) / 60000)
+if (failed.length) {
+  console.error(`\nshard ${index}/${total}: ${failed.length} of ${mine.length} suite(s) failed in ${mins} min`)
+  for (const f of failed) console.error(`  \u2717 ${f}`)
+  process.exit(1)
+}
+console.log(`\nshard ${index}/${total} green in ${mins} min`)
