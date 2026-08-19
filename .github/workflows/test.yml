@@ -49,12 +49,37 @@ jobs:
       # produced it. The rest are Electron's runtime libraries, which a headless
       # runner does not have by default.
       - name: System deps
+        # BOUNDED, and the bound is the point. apt has no timeout of its own, so a
+        # stalled mirror hangs forever — six jobs fetching at once found one, and
+        # each sat in `apt-get update` until the job's own 40-minute limit killed
+        # it. GitHub reports a timeout-killed job as "cancelled", so the run looked
+        # like someone had pressed the button, five shards reported nothing, and
+        # the badge went red for a reason that had nothing to do with the code.
+        #
+        # Now: per-step timeout, so a hang costs six minutes and says so; retries
+        # and per-request timeouts inside apt, so a slow mirror is retried rather
+        # than waited on; and noninteractive, so nothing can ever sit on a prompt
+        # that no one is there to answer.
+        timeout-minutes: 6
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y poppler-utils xvfb \
+          set -eux
+          APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          for attempt in 1 2 3; do
+            sudo apt-get $APT_OPTS update && break
+            echo "apt-get update failed (attempt $attempt), retrying"; sleep $((attempt * 10))
+          done
+          # libasound2t64 on noble, libasound2 before it — ask for whichever exists
+          # rather than re-running the whole install on failure, which used to
+          # double the time whenever the fallback was taken.
+          ASOUND=libasound2t64
+          apt-cache show "$ASOUND" >/dev/null 2>&1 || ASOUND=libasound2
+          sudo apt-get $APT_OPTS install -y --no-install-recommends \
+            poppler-utils xvfb \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 \
-            libasound2t64 libxshmfence1 libxdamage1 libxrandr2 libpangocairo-1.0-0 \
-            libgtk-3-0 || sudo apt-get install -y libasound2
+            "$ASOUND" libxshmfence1 libxdamage1 libxrandr2 libpangocairo-1.0-0 \
+            libgtk-3-0
 
       # One xvfb for the shard: every Electron suite launches its own app and one
       # display serves them all. Tier-2 erase cases (words baked into an image)
