@@ -70,7 +70,17 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then PUBLISH=always; else PUBLISH=never; fi
           echo "publish=$PUBLISH"
-          npx electron-builder --publish "$PUBLISH"
+          # Notarising is OFF in the config, because with no Apple credentials
+          # electron-builder does not skip it — it fails the whole macOS build.
+          # Turn it on only when there is an Apple ID to notarise with.
+          EXTRA=""
+          if [ -n "${APPLE_ID:-}" ] && [ "$RUNNER_OS" = "macOS" ]; then
+            EXTRA="--config.mac.notarize=true"
+            echo "notarising: yes"
+          else
+            echo "notarising: no (no APPLE_ID)"
+          fi
+          npx electron-builder --publish "$PUBLISH" $EXTRA
 
       - name: Keep the installers even when nothing is published
         uses: actions/upload-artifact@v4
