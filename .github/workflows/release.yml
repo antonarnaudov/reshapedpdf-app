@@ -97,6 +97,15 @@ jobs:
           fi
           npx electron-builder --publish "$PUBLISH" $EXTRA
 
+      # The artifact is built by now but NOT yet in anyone's hands on a
+      # workflow_dispatch, and on a tag it has just been uploaded — so this is
+      # the last honest moment to ask whether it starts. v0.1.0 and v0.1.1 both
+      # shipped an app that threw before its first window, and every other check
+      # passed: the suites drive a DEV build, the tag matched, the installers
+      # uploaded, the release page looked perfect.
+      - name: The packaged app can start
+        run: npm run verify:package
+
       - name: Keep the installers even when nothing is published
         uses: actions/upload-artifact@v4
         with:
