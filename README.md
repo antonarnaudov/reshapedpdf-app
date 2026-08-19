@@ -125,8 +125,18 @@ npm test                 # the full suite: unit harnesses + real-app CDP suites
 npm run package          # installers into release/ (dmg + zip, nsis, AppImage/deb)
 ```
 
-Tagging (`git tag v0.1.0 && git push origin v0.1.0`) runs the same build in CI and
-opens a **draft release** with the installers attached.
+`npm test` runs all 43 checks in sequence, which is right on a laptop and too slow
+for a runner — most of them boot a real Electron app. CI splits the same list six
+ways (`node scripts/run-suites.mjs <n> 6`), derived from the `test` script itself
+so a new check cannot be left out of CI by forgetting to list it twice.
+
+Tagging (`git tag vX.Y.Z && git push origin vX.Y.Z` — the tag must match
+`package.json`, and CI fails fast if it does not) builds all three platforms and
+**publishes** the release with the installers and the `latest*.yml` manifests the
+updater reads. It is published, not a draft: every installed copy will offer it on
+its next launch. A final job then attaches `SHA256SUMS.txt` and sets the release
+body from the tagged commit's own message plus
+[.github/release-notes-footer.md](.github/release-notes-footer.md).
 
 ### Signing — do this before anyone else installs it
 

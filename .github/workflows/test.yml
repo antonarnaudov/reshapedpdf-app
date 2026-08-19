@@ -3,6 +3,10 @@ name: test
 on:
   push:
     branches: [main, master]
+    # Tags too. A tag is what publishes, and until now the suite had never run on
+    # a tagged commit — only on whatever branch push preceded it, which is the
+    # same tree in the ordinary case and is not in the interesting one.
+    tags: ['v*']
   pull_request:
 
 # A newer push makes an older run pointless. Without this they queue up and the
@@ -13,7 +17,7 @@ concurrency:
 
 jobs:
   suite:
-    # SHARDED, because thirty-six of the forty-two checks boot a real Electron
+    # SHARDED, because thirty-seven of the forty-three checks boot a real Electron
     # app and the whole sequence overran a 45-minute job every time — the badge on
     # this repo had never gone green on a suite that passes locally. Six shards
     # run the same checks in parallel; nothing is skipped, and the split is

@@ -59,8 +59,9 @@ const CASES = [
     expect: { minWidthPt: 70, at: [60, 160], colour: [192, 57, 43] },
   },
   {
-    id: 'text-cyrillic', kind: 'text', why: 'the fixtures are Bulgarian; a Latin-only subset would silently drop this',
-    obj: { x: 60, y: 200, w: 240, h: 20, text: 'Лозенец, България', color: '#000000', size: 14, font: 'sans', bold: false },
+    id: 'text-cyrillic', kind: 'text',
+    why: 'Cyrillic has no place in the base-14 encodings, so a Latin-only export drops it silently — the run has to come back as a raster, not as nothing',
+    obj: { x: 60, y: 200, w: 240, h: 20, text: 'Проба на кирилица', color: '#000000', size: 14, font: 'sans', bold: false },
     expect: { minWidthPt: 70, at: [60, 200] },
   },
   {

@@ -415,10 +415,11 @@ export const FONT_IDS = Object.keys(FONTS) as FontId[]
  * nothing like Helvetica's metrics. CSS then never reaches the bundled twin,
  * because as far as the browser is concerned the first name matched.
  *
- * That is not theoretical. It is why the erase suite's `panel-light` case passed
- * on every machine here and failed on the CI runner: the reprint came back 1.84pt
- * off its baseline with 71% of the ink, and the difference between the two boxes
- * was DejaVu standing in for Helvetica without saying so.
+ * That is not theoretical, though it is not what broke panel-light on the CI
+ * runner — that was the ink sampler, and this was suspected first and cleared by
+ * measuring: Ubuntu ships Liberation Sans, which IS a metric twin, so that runner
+ * happens to be safe. A machine without it is not, and nothing about the old
+ * stack could tell the two apart. `tests/stdstack-check.mjs` now can.
  *
  * So ask the question that actually matters — not "is Helvetica installed" but
  * "does the face this browser calls Helvetica have Helvetica's metrics" — by

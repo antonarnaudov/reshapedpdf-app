@@ -7,12 +7,10 @@ name: release
 on:
   push:
     tags: ['v*']
+  # A manual run always builds and never publishes: publishing is what a TAG is
+  # for. There used to be a `dry_run` input here, defaulting to true and read by
+  # nothing, which offered a choice the workflow did not implement.
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Build the installers but publish nothing'
-        type: boolean
-        default: true
 
 permissions:
   contents: write   # to create the release and upload to it
@@ -120,22 +118,87 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # ------------------------------------------------------------------ checksums
+  # --------------------------------------------------- checksums and the notes
   # An unsigned installer gives a user nothing to verify against. Until there are
   # certificates, a published SHA256 is the only way for someone to tell the file
   # they downloaded from the file this workflow built — which matters most for
   # exactly the builds macOS and SmartScreen are already warning them about.
   #
-  # It runs after all three platforms, because the point is ONE list covering
-  # every installer in the release; a per-runner file would leave a reader
-  # checking three of them and wondering which covers the download they have.
-  checksums:
+  # And electron-builder publishes with an EMPTY body, so every release page so
+  # far has been a bare tag over a wall of binaries: nothing saying what changed,
+  # and nothing about Gatekeeper where the people hitting Gatekeeper actually
+  # are. That instruction lives on the website and in the README, neither of
+  # which is the page they downloaded from.
+  #
+  # Both run after all three platforms, because both are about the release as a
+  # whole: a per-runner checksum file would leave a reader holding three of them
+  # wondering which one covers their download.
+  finalise:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    # always(), because `needs:` alone means success() and this job is skipped
+    # exactly when it matters most. The matrix is fail-fast: false and every
+    # runner publishes as it finishes, with releaseType: release — so if Windows
+    # fails at the packaged-app gate AFTER macOS and Linux have uploaded, there is
+    # already a live, non-draft release that every installed copy is being offered,
+    # and skipping this job leaves it with no body (no Gatekeeper instructions,
+    # which is the whole reason the footer exists) and no checksums. It is worse
+    # to say nothing there than anywhere else.
+    #
+    # push only, not merely "the ref is a tag": the Run-workflow selector accepts
+    # tags, so a workflow_dispatch aimed at an existing tag would reach this job
+    # while the build job published NOTHING — and `gh release edit --notes-file`
+    # replaces a body outright. A dry run whose own description says it publishes
+    # nothing would have overwritten a live release page, silently.
+    # !cancelled() rather than always(): still runs when a platform FAILED, which
+    # is the case this exists for, but not when a human stopped the run — nobody
+    # who hits cancel wants the release page rewritten a minute later.
+    if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+
+      # With always(), this job now runs on a partial release too. Say so, in the
+      # notes, where someone deciding whether to download can read it — rather
+      # than leaving them to infer it from which files are missing.
+      - name: Which platforms actually published
+        id: platforms
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Ask more than once, and distinguish "no such release" from "the API
+          # did not answer". A single failed call was being read as "every
+          # platform build failed", which silently skipped the checksums and the
+          # body on a release that was in fact published and live.
+          EXISTS=""
+          for attempt in 1 2 3; do
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>err.txt; then EXISTS=yes; break; fi
+            if grep -qi 'release not found\|not found (HTTP 404)' err.txt; then EXISTS=no; break; fi
+            echo "attempt $attempt: $(head -1 err.txt)"; sleep $((attempt * 5))
+          done
+          if [ -z "$EXISTS" ]; then
+            echo "::error::could not determine whether $TAG was released after 3 attempts"
+            exit 1
+          fi
+          if [ "$EXISTS" = no ]; then
+            echo "::warning::no release exists for $TAG — every platform build failed"
+            echo "exists=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "exists=yes" >> "$GITHUB_OUTPUT"
+          NAMES="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' || true)"
+          MISSING=""
+          echo "$NAMES" | grep -q '\.dmg$'      || MISSING="$MISSING macOS"
+          echo "$NAMES" | grep -q '\.exe$'      || MISSING="$MISSING Windows"
+          # either Linux artefact counts as "Linux published"
+          echo "$NAMES" | grep -qE '\.(AppImage|deb)$' || MISSING="$MISSING Linux"
+          echo "missing=${MISSING# }" >> "$GITHUB_OUTPUT"
+          if [ -n "$MISSING" ]; then echo "::warning::no installers for:$MISSING"; fi
+
       - name: Hash every published installer
+        if: steps.platforms.outputs.exists == 'yes'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -153,3 +216,37 @@ jobs:
           echo "--- SHA256SUMS.txt ---"; cat SHA256SUMS.txt
           test -s SHA256SUMS.txt
           gh release upload "$TAG" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+
+      # The commit a release is tagged from already carries the explanation, in
+      # full, so use it rather than asking anyone to write it twice.
+      - name: Give the release a body
+        # NOT gated on the checksum step: a flaky download or upload there must
+        # not cost the release its Gatekeeper instructions, which are the part a
+        # human actually needs.
+        if: always() && steps.platforms.outputs.exists == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          # `missing` is a step OUTPUT; the shell only sees it if it is mapped in
+          # here. Without this line `${MISSING:-}` was always empty, `set -u`
+          # could not catch it because of the default, and the whole
+          # incomplete-release warning was unreachable code that reported success.
+          MISSING: ${{ steps.platforms.outputs.missing }}
+        run: |
+          set -euo pipefail
+          # HEAD, not "$TAG": the workflow was triggered BY that tag, so the
+          # checked-out commit is the tagged one — and this way it does not
+          # matter whether the checkout brought the tag ref along with it.
+          # Trailers are for the log, not for a release page — drop them and any
+          # blank lines they leave behind.
+          git log -1 --pretty=format:'%B' \
+            | sed -e '/^Co-[Aa]uthored-[Bb]y:/d' -e '/^Signed-off-by:/d' \
+            | awk 'NF {blank=0; print; next} {blank++; if (blank<2) print}' > notes.md
+          printf '\n' >> notes.md
+          if [ -n "${MISSING:-}" ]; then
+            printf '> **This release is incomplete.** No installers were published for: %s.\n' "$MISSING" >> notes.md
+            printf '> Those builds failed; use the previous release for those platforms.\n\n' >> notes.md
+          fi
+          cat .github/release-notes-footer.md >> notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+          echo "release body set from the tagged commit ($(wc -l < notes.md) lines)"

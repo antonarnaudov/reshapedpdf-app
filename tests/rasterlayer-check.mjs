@@ -35,6 +35,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { inflateSync } from 'node:zlib'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PDFDocument, PDFName } from 'pdf-lib'
@@ -89,7 +90,7 @@ async function makeSharedFormDoc() {
 
 const b64 = await makeSharedFormDoc()
 
-const child = launchApp({ cwd: ROOT, port: PORT, userDataDir: join(TMP, 'profile') })
+const child = launchApp({ cwd: ROOT, port: PORT, userDataDir: join(TMP, 'rasterlayer-profile') })
 const cdp = await connect({ port: PORT })
 await sleep(1800)
 
@@ -128,14 +129,12 @@ const textOf = (n) => {
 }
 const p1 = textOf(1)
 const p2 = textOf(2)
-const raw = readFileSync(pdf, 'latin1')
-
 const results = []
 const record = (name, ok, detail) => { results.push(ok); console.log(`  ${name.padEnd(30)} ${ok ? 'PASS' : 'FAIL'}  ${detail}`) }
 
 // If the page was NOT rasterised the rest proves nothing about the layer, so
 // say so loudly rather than passing on a path this test never meant to take.
-const rasterised = /\/Subtype\s*\/Image/.test(raw)
+const rasterised = /\/Subtype\s*\/Image/.test(readFileSync(pdf, 'latin1'))
 record('page 1 was rasterised', rasterised,
   rasterised ? 'the shared form forced the fallback, which is the path under test'
              : 'NO image XObject — removal succeeded, so the invisible layer was never written and nothing here was tested')
@@ -143,8 +142,47 @@ record('page 1 was rasterised', rasterised,
 record('the covered words are gone', !p1.includes(SECRET),
   p1.includes(SECRET) ? `pdftotext still reads ${SECRET} on page 1 — under the black box` : `no trace of ${SECRET} on page 1`)
 
-record('the covered words are gone from the file', !raw.includes(SECRET),
-  raw.includes(SECRET) ? `the literal string is still in the bytes` : 'not in the raw bytes either')
+/* NOT "the secret is absent from the file" — it is not supposed to be. Page 2
+ * draws the same shared form and carries no mark, so the words legitimately
+ * remain there; removing them would be data loss, not redaction. The assertion
+ * this replaces claimed the whole-file property and passed only because it
+ * searched compressed bytes for a string pdf-lib writes as hex, so it could
+ * never match either way. Made real, it fails — correctly — and that is the
+ * clearest possible sign it was asserting the wrong thing.
+ *
+ * The property that IS true and IS worth guarding: page 1's own drawing program
+ * must not contain the covered words. That page is a raster plus an invisible
+ * text layer, and the invisible layer is precisely where a mishandled exclusion
+ * would put them back as selectable characters. So inflate that one page's
+ * content and look there. */
+const page1Streams = await (async () => {
+  const doc = await PDFDocument.load(readFileSync(pdf))
+  const node = doc.getPage(0).node
+  const contents = node.Contents()
+  const refs = contents && 'asArray' in contents
+    ? contents.asArray()
+    : [node.get(PDFName.of('Contents'))]
+  let out = ''
+  for (const r of refs) {
+    const st = r && doc.context.lookup(r)
+    if (!st || !st.contents) continue
+    try { out += inflateSync(Buffer.from(st.contents)).toString('latin1') } catch { out += Buffer.from(st.contents).toString('latin1') }
+  }
+  return out
+})()
+const onPage1 = (word) =>
+  page1Streams.includes(word) ||
+  page1Streams.toLowerCase().includes(Buffer.from(word, 'latin1').toString('hex'))
+
+record("the covered words are not in page 1's drawing program", !onPage1(SECRET),
+  onPage1(SECRET) ? 'the invisible text layer put them back as selectable characters under the box'
+                  : "not in page 1's inflated content, as text or as hex")
+
+// The control. Without it, a lookup that can never match reads as a clean bill —
+// which is exactly how the assertion above passed for as long as it was wrong.
+record('that lookup can actually find things', onPage1(KEEP),
+  onPage1(KEEP) ? `${KEEP} is visible to the same lookup that just cleared ${SECRET}`
+                : 'the lookup found nothing at all, so it proves nothing about the secret either')
 
 record('the uncovered words survive', p1.includes(KEEP),
   p1.includes(KEEP) ? `${KEEP} is still selectable over the raster` : `${KEEP} was lost — the page is flat pixels and search, copy and screen readers get nothing`)
@@ -153,6 +191,27 @@ record('the uncovered words survive', p1.includes(KEEP),
 // belongs to that page and removing it there would be data loss, not redaction.
 record('the other page is untouched', p2.includes(SECRET) && p2.includes(KEEP),
   `page 2 still reads ${p2.includes(SECRET) ? 'the shared form' : 'NOTHING of the shared form'} and ${p2.includes(KEEP) ? 'its own line' : 'NOT its own line'}`)
+
+/* And is still TEXT. The assertion above reads page 2 with pdftotext, which is
+ * just as happy with a rasterised page carrying an invisible layer — so a bug
+ * that re-forged every page as an image, not only the marked one, would pass it
+ * while quietly destroying the quality of a page nobody redacted. Only page 1
+ * should have become a picture. */
+const page2HasImage = await (async () => {
+  const doc = await PDFDocument.load(readFileSync(pdf))
+  const res = doc.getPage(1).node.Resources()
+  const xo = res && res.lookup(PDFName.of('XObject'))
+  if (!xo || !xo.entries) return false
+  for (const [, ref] of xo.entries()) {
+    const st = doc.context.lookup(ref)
+    const sub = st && st.dict && st.dict.get(PDFName.of('Subtype'))
+    if (sub && String(sub) === '/Image') return true
+  }
+  return false
+})()
+record('only the marked page was rasterised', !page2HasImage,
+  page2HasImage ? 'page 2 became an image too — an unmarked page lost its vector text for nothing'
+                : 'page 2 is still its original drawing program')
 
 const bad = results.filter((r) => !r).length
 console.log(`\n${results.length - bad} of ${results.length} hold  (${pdf})`)

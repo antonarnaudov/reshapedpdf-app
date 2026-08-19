@@ -24,7 +24,7 @@
     "test:fonts": "node tests/font-check.mjs",
     "test:searchrot": "node tests/search-rot-check.mjs",
     "test:rotateanno": "node tests/rotate-anno-check.mjs",
-    "test": "npm run build && npm run typecheck && npm run check:fontnames && npm run check:notices && npm run test:fonts && npm run test:winansi && npm run test:redactstream && npm run test:contentwalk && npm run test:coverform && npm run test:rasterlayer && npm run test:searchrot && npm run test:textlayerrot && npm run test:rotateanno && npm run test:peelquality && npm run test:textedit && npm run test:textfidelity && npm run test:stdstack && npm run test:clean && npm run test:protected && npm run test:objects && npm run test:imgfmt && npm run test:zorder && npm run test:erase && npm run test:closeguard && npm run test:history && npm run test:wrap && npm run test:forms && npm run test:fastpath && npm run test:pageexcl && npm run test:metadata && npm run test:docswitch && npm run test:detectalign && npm run test:paletteguard && npm run test:spacekey && npm run test:zoomanchor && npm run test:retypeedge && npm run test:rotrun && npm run test:outline && npm run test:liftgeom && npm run test:liftcovers && npm run test:vector && npm run test:peelelements && npm run test:textcommit && npm run test:fidelity && npm run test:sweep && npm run test:ux",
+    "test": "npm run build && npm run typecheck && npm run check:fontnames && npm run check:notices && npm run test:fonts && npm run test:winansi && npm run test:redactstream && npm run test:contentwalk && npm run test:coverform && npm run test:rasterlayer && npm run test:searchrot && npm run test:textlayerrot && npm run test:rotateanno && npm run test:peelquality && npm run test:textedit && npm run test:textfidelity && npm run test:stdstack && npm run test:clean && npm run test:protected && npm run test:objects && npm run test:imgfmt && npm run test:zorder && npm run test:inkcolor && npm run test:erase && npm run test:closeguard && npm run test:history && npm run test:wrap && npm run test:forms && npm run test:fastpath && npm run test:pageexcl && npm run test:metadata && npm run test:docswitch && npm run test:detectalign && npm run test:paletteguard && npm run test:spacekey && npm run test:zoomanchor && npm run test:retypeedge && npm run test:rotrun && npm run test:outline && npm run test:liftgeom && npm run test:liftcovers && npm run test:vector && npm run test:peelelements && npm run test:textcommit && npm run test:fidelity && npm run test:sweep && npm run test:ux",
     "test:history": "node tests/history-suite.mjs",
     "test:wrap": "node tests/wrap-check.mjs",
     "test:forms": "node tests/forms-suite.mjs",
@@ -69,7 +69,8 @@
     "verify:package": "node tests/packaged-app-check.mjs",
     "build:electron": "node scripts/build-electron.mjs",
     "test:stdstack": "node tests/stdstack-check.mjs",
-    "test:rasterlayer": "node tests/rasterlayer-check.mjs"
+    "test:rasterlayer": "node tests/rasterlayer-check.mjs",
+    "test:inkcolor": "node tests/inkcolor-check.mjs"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",

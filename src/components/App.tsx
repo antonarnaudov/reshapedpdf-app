@@ -10,7 +10,7 @@ import { walkPageContent, layersAt } from '../pdf/contentwalk'
 import { ensureMatchFaces, identifyFace } from '../core/typematch'
 import { getSamplingCanvas, renderPageWithoutText } from '../pdf/render'
 import { blendObjects } from '../core/blend'
-import { makeBlendedPatch, detectInkBands, makeBrushPatch } from '../pdf/patch'
+import { makeBlendedPatch, detectInkBands, makeBrushPatch, sampleInkColor } from '../pdf/patch'
 import { runFontInfo } from '../pdf/fontinfo'
 import { faceCoversChar } from '../pdf/embeddedfonts'
 import { searchDoc, invalidateSearchCache } from '../pdf/textsearch'
@@ -322,6 +322,12 @@ function useDebugHooks(): void {
       state: () => useStore.getState(),
       blendPatch: (canvas: HTMLCanvasElement, r: { x: number; y: number; w: number; h: number }, pageW: number) =>
         makeBlendedPatch(canvas, r, pageW),
+      /* Which colour a retype would set this run in. Exposed so the decision can
+         be driven against a canvas built pixel by pixel — the ink/paper vote is
+         the one piece of this that a renderer's antialiasing can flip, and a
+         real page cannot be asked to contaminate itself on demand. */
+      inkAt: (canvas: HTMLCanvasElement, r: { x: number; y: number; w: number; h: number }, pageW: number) =>
+        sampleInkColor(canvas, r, pageW),
       detectInkBands: (canvas: HTMLCanvasElement, r: { x: number; y: number; w: number; h: number }, pageW: number) =>
         detectInkBands(canvas, r, pageW),
       brushPatch: (canvas: HTMLCanvasElement, strokes: [number, number][][], radius: number, pageW: number) =>

@@ -60,9 +60,20 @@ try {
   try { child.kill('SIGKILL') } catch { /* already gone */ }
 }
 
-let bad = 0
+let bad = 0, skipped = 0
 for (const r of rows) {
-  if (!r.twinLoaded) { console.log(`  ${r.std.padEnd(12)} SKIP  ${r.twin} is not loaded`); continue }
+  if (!r.twinLoaded) {
+    /* A missing twin is not a neutral "cannot test here". It is the one state in
+       which a base-14 retype is GUARANTEED to be set in the wrong metrics: with
+       the webfont absent, stdFontStack's document.fonts.check guard returns the
+       old system-first stack unconditionally and forever. So this counts as a
+       failure, not a skip — and the packaging regressions that stripped assets
+       out of the bundle twice already are exactly how it would arise. */
+    skipped++
+    console.log(`  ${r.std.padEnd(12)} FAIL  the bundled ${r.twin} is not loaded — nothing can be verified, and`)
+    console.log(`  ${''.padEnd(12)}       in this state every base-14 edit silently uses the system face`)
+    continue
+  }
   const drift = Math.abs(r.chosen - r.twinW) / r.twinW
   const lead = (r.stack || '').split(',')[0].trim()
   if (drift < 0.005) {
@@ -73,5 +84,6 @@ for (const r of rows) {
                 ` — an edit set here will not reproduce in the exported file`)
   }
 }
-console.log(`\n${rows.length - bad} of ${rows.length} base-14 faces set in the right metrics`)
-process.exit(bad ? 1 : 0)
+console.log(`\n${rows.length - bad - skipped} of ${rows.length} base-14 faces set in the right metrics` +
+            (skipped ? ` · ${skipped} unverifiable (bundled twin missing)` : ''))
+process.exit(bad + skipped ? 1 : 0)

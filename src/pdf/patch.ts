@@ -1138,11 +1138,68 @@ export function sampleInkColor(canvas: HTMLCanvasElement, rect: Rect, pageW: num
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) return '#111111'
     const x = Math.max(0, Math.round(rect.x * k))
-    const y = Math.max(0, Math.round(rect.y * k))
+    const fy = Math.max(0, Math.round(rect.y * k))
     const w = Math.min(canvas.width - x, Math.max(2, Math.round(rect.w * k)))
-    const h = Math.min(canvas.height - y, Math.max(2, Math.round(rect.h * k)))
+    const fh = Math.min(canvas.height - fy, Math.max(2, Math.round(rect.h * k)))
+
+    /* Drop a sliver off the TOP AND BOTTOM before reading any pixels.
+     *
+     * What contaminates a run's box is its vertical neighbours: the rule above
+     * the line, the descenders of the line before, the edge of the panel it sits
+     * on. They enter through the horizontal edges, one or two device pixels
+     * deep, and whether they enter at all on a given machine is a question about
+     * antialiasing rather than about the document — which is how the same page
+     * sampled correctly here and wrongly on a Linux runner.
+     *
+     * The run's own ink is not in those rows. It is in the middle: a line of type
+     * that fills its box top to bottom has no room for the box to be around it.
+     * So the sliver costs a little of the cap tops and a little of the baseline,
+     * of which there is plenty more directly below, and it removes the whole
+     * class of edge bleed without giving up what makes extremes trustworthy.
+     *
+     * Vertical only. The first and last glyph's ink DOES reach the left and
+     * right edges — the box is trimmed to the letters — so insetting there would
+     * throw away real ink to solve a problem that does not arrive from the side.
+     */
+    /* ceil, not round. canvas.width is Math.floor(SAMPLE_SCALE * pageWidth), so k
+       is exactly 1.5 only when the page is an integer number of points wide —
+       true of US Letter (612) and Tabloid (792), false of every ISO size (A4 is
+       892/595.276 = 1.4985). Math.round turned that rounding artefact into a
+       one-row sliver on A4 and a two-row sliver on Letter: the same document on
+       different paper, taking different code paths. */
+    const inset = Math.max(1, Math.ceil(k))
+    const y = fh - inset * 2 >= 4 ? fy + inset : fy
+    const h = fh - inset * 2 >= 4 ? fh - inset * 2 : fh
     const d = ctx.getImageData(x, y, w, h).data
     const lum = (i: number) => 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]
+
+    /* THE TWO TONES THIS RUN IS MADE OF — the darkest and the brightest.
+     *
+     * Extremes, deliberately, and it is worth saying why because the obvious
+     * improvement is wrong. The weakness of an extreme is that it is a sample of
+     * size one: a box is never purely its own line — a rule sits above it, a
+     * descender hangs into it, and where exactly either lands is the renderer's
+     * business — so a thin contamination can supply one end and then, because
+     * everything below measures from these two numbers, supply the answer.
+     *
+     * The tempting fix is to take the two most POPULOUS tones instead, from a
+     * luminance histogram. That was tried and it is much worse, because it gives
+     * up the one guarantee extremes have: the darkest pixel and the brightest
+     * pixel in a box containing ink are always the ink and the surface, in some
+     * order, whatever the surface is made of. A histogram has no such property.
+     * Ink is the minority by area — a trimmed line of body copy is 4-20% of its
+     * box — so wherever the background has more than one tonal cluster (a
+     * photograph, a duotone, a halftone scan, an axial-shaded panel, or plain
+     * scanner grain, whose lobe is wide enough to carry several maxima of its
+     * own) BOTH winners are background and the ink is never examined at all. The
+     * words then come back in the colour of the thing behind them — the exact
+     * failure this function's last guard exists to prevent, arrived at from a
+     * direction that guard cannot see, because a background tone 25 luminance
+     * off the surround median does not look like the surface to it.
+     *
+     * So keep the extremes, and take the contamination away from them instead —
+     * by not looking at the rows where it lives. See the inset below.
+     */
     let minL = 255, maxL = 0
     for (let i = 0; i < d.length; i += 4) {
       const l = lum(i)
@@ -1165,15 +1222,44 @@ export function sampleInkColor(canvas: HTMLCanvasElement, rect: Rect, pageW: num
     // definition, whether that is white stock or a dark blue banner; the ink is
     // then whichever extreme lies further from it. No counting, and no
     // assumption about how much of its line a letter is entitled to cover.
-    const frame = Math.max(2, Math.round(Math.min(w, h) * 0.35))
-    const fx0 = Math.max(0, x - frame), fy0 = Math.max(0, y - frame)
+    // Around the ORIGINAL box, not the inset one: the rows the inset dropped are
+    // the contaminated ones, and letting the ring cover them would feed exactly
+    // the neighbour we just stepped away from into the estimate of the surface.
+    const frame = Math.max(2, Math.round(Math.min(w, fh) * 0.35))
+    const fx0 = Math.max(0, x - frame), fy0 = Math.max(0, fy - frame)
     const fw = Math.min(canvas.width - fx0, w + frame * 2)
-    const fh = Math.min(canvas.height - fy0, h + frame * 2)
-    const fd = ctx.getImageData(fx0, fy0, fw, fh).data
+    const fhh = Math.min(canvas.height - fy0, fh + frame * 2)
+    const fd = ctx.getImageData(fx0, fy0, fw, fhh).data
+    /* A KNOWN HOLE, left open deliberately — read this before closing it.
+     *
+     * The ring is taken to be the surface the run sits on, and the ink is then
+     * whichever extreme lies further from it. Above and below a line of type is
+     * exactly where that is not true: a table rule, the border of a callout, the
+     * line of a form field all sit a few pixels off the box and none of them is
+     * what the words are printed on. When one does, the median comes out as the
+     * neighbour, the comparison inverts, and this function returns the SURFACE
+     * colour — the words are erased and redrawn in the panel they sit on, and the
+     * app reports a match. tests/inkcolor-check.mjs pins it as `rule-above-and-below`.
+     *
+     * The obvious fix is to take the surface from BESIDE the run only — level
+     * with it, left and right — since a surface runs along the line while
+     * neighbours sit across it. That was tried and reverted. It fixes the table
+     * rule and breaks the erase suite's panel-light, because the band the retype
+     * actually samples is wider than the panel it sits on, so "beside" lands on
+     * the white page outside the panel; paper then reads as 255, the panel reads
+     * as the darker tone, and the sampler returns the panel. Measured, not
+     * theorised: colour came back #3aa79a, the panel exactly.
+     *
+     * So whatever closes this has to be geometric AND has to stay inside the
+     * region the run is printed on, which is not something the ring knows. It
+     * probably needs the band detection to say where the panel ends. Until then
+     * the hole stays open and named, rather than half-closed in a way that trades
+     * a real-corpus failure for a synthetic one.
+     */
     const surround: number[] = []
-    for (let py = 0; py < fh; py++)
+    for (let py = 0; py < fhh; py++)
       for (let px = 0; px < fw; px++) {
-        const insideRun = px + fx0 >= x && px + fx0 < x + w && py + fy0 >= y && py + fy0 < y + h
+        const insideRun = px + fx0 >= x && px + fx0 < x + w && py + fy0 >= fy && py + fy0 < fy + fh
         if (insideRun) continue
         const i = (py * fw + px) * 4
         surround.push(0.2126 * fd[i] + 0.7152 * fd[i + 1] + 0.0722 * fd[i + 2])
