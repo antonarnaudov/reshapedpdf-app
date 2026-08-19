@@ -68,6 +68,21 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # A MISSING secret arrives as an empty string, not as an absent variable,
+          # and electron-builder reads an empty CSC_LINK as "the path to a
+          # certificate" — resolving "" against the working directory, which is
+          # the repo root, and failing with `⨯ <repo> not a file`. Nothing in that
+          # message mentions signing. Unset the empty ones so it sees what it sees
+          # on a developer machine: nothing at all.
+          # (an `&&` chain here would abort the step under `set -e` the moment a
+          # variable IS set, which is the case this exists to leave alone)
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            eval "val=\${$v:-}"
+            if [ -z "$val" ]; then
+              unset "$v"
+              echo "unset $v (no secret)"
+            fi
+          done
           if [ "${{ github.event_name }}" = "push" ]; then PUBLISH=always; else PUBLISH=never; fi
           echo "publish=$PUBLISH"
           # Notarising is OFF in the config, because with no Apple credentials
