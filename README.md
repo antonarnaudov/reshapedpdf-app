@@ -21,6 +21,27 @@ selection handles, a light-table canvas, an ember that cools when you save).
 
 ## Run it
 
+## Install it
+
+Downloads for macOS, Windows and Linux are on the
+[releases page](https://github.com/antonarnaudov/reshapedpdf-app/releases/latest).
+The app checks for a newer version once per launch and asks before downloading
+anything and again before restarting — nothing happens without a click, and
+"later" applies the update on your next ordinary quit. Help → Check for
+Updates… asks on demand.
+
+**The builds are not code-signed yet.** macOS Sonoma and Sequoia will say the
+app "is damaged and can't be opened", which is the quarantine flag rather than a
+damaged download. Move it to /Applications and run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ReshapedPDF.app
+```
+
+On Windows, SmartScreen shows *More info → Run anyway*.
+
+## Run it from source
+
 ```bash
 npm install
 
