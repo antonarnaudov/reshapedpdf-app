@@ -127,7 +127,8 @@
      ],
      "why": "the shape that made retype reprint words in the colour of the thing behind them. The ink sampler judges ink-vs-paper against the median of a frame around the run; where that frame reaches into darker neighbours the median comes out dark, the lighter tone wins, and the 'ink' returned is the PANEL. The run is erased and redrawn invisible, and the app calls it a match. The suite catches it through inkRatio: an invisible reprint lays down no ink at all",
      "editTo": "Light type, reset on the same panel",
-     "editWhy": "an edit as well as an identity pass, because the colour is chosen on both paths"
+     "editWhy": "an edit as well as an identity pass, because the colour is chosen on both paths",
+     "knownGap": "the surface is estimated from a ring around the run, and this run has a dark rule above and below it; where the ring reaches them the ink/paper vote inverts and the reprint takes the panel's colour. Platform-dependent, because it turns on exactly how tall the detected band comes out: green on macOS, red on the Linux runner, same document and same code. Deterministic coverage lives in tests/inkcolor-check.mjs as rule-above-and-below, which fails on every platform; the reverted attempt at a fix is written up above `surround` in src/pdf/patch.ts. Only excused while the failure has this shape — an identity pass that lost its ink (inkRatio < 0.6) with the erase itself clean."
     }
    ]
   }

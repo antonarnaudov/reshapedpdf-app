@@ -115,9 +115,18 @@ const PROBE = `(async () => {
     // every stroke edge — the thing solid bars cannot express, and the thing a
     // rule that reasons about tone POPULATIONS gets wrong on small type, where
     // the fringe outnumbers the stroke core.
-    { id: 'glyphs-8pt',          panel: '#ffffff', text: '#1a1a1f', rows: 0, want: '#1a1a1f', glyph: 8 },
-    { id: 'glyphs-8pt+1row',     panel: '#ffffff', text: '#1a1a1f', rows: 1, want: '#1a1a1f', glyph: 8 },
-    { id: 'glyphs-on-panel',     panel: '#3aa79a', text: '#fff1d6', rows: 0, want: '#fff1d6', glyph: 9 },
+    /* Real glyphs are held to the ink-SIDE bound rather than to an exact colour,
+       with the drift printed and capped. Not to make them easier: the exact
+       colour of antialiased small type is a property of the RASTERISER, and
+       these same cases measure ~12 luminance light on macOS and ~31 on the Linux
+       runner, from identical input. An exact tolerance here is a tolerance
+       calibrated to whichever machine it was written on — which is the whole
+       class of bug this file exists to catch, reproduced inside the check itself.
+       The side bound still fails on the thing that matters: a colour on the paper
+       side of the midpoint means the edit is invisible. */
+    { id: 'glyphs-8pt',          panel: '#ffffff', text: '#1a1a1f', rows: 0, want: '#1a1a1f', glyph: 8, side: true },
+    { id: 'glyphs-8pt+1row',     panel: '#ffffff', text: '#1a1a1f', rows: 1, want: '#1a1a1f', glyph: 8, side: true },
+    { id: 'glyphs-on-panel',     panel: '#3aa79a', text: '#fff1d6', rows: 0, want: '#fff1d6', glyph: 9, side: true },
     /* The smallest type anyone sets, in the tightest box.
      *
      * These are held to a WEAKER standard than the rest, and the reason is a
@@ -197,7 +206,12 @@ const PROBE = `(async () => {
     const got = S.inkAt(cv, box, PAGE_W)
     const surfaces = [c.panel, c.panel2].filter(Boolean)
     const lum = (h) => { const p = (i) => parseInt(h.slice(i, i + 2), 16); return 0.2126*p(1) + 0.7152*p(3) + 0.0722*p(5) }
-    const onInkSide = Math.abs(lum(got) - lum(c.want)) < Math.abs(lum(got) - lum(c.panel))
+    // On the ink side of the midpoint AND not washed beyond MAXDRIFT. Without the
+    // ceiling this would accept a sample that is technically ink-ward and visibly
+    // wrong; 60 leaves headroom over the worst measured case (6pt at ~53).
+    const MAXDRIFT = 60
+    const onInkSide = Math.abs(lum(got) - lum(c.want)) < Math.abs(lum(got) - lum(c.panel)) &&
+                      Math.abs(lum(got) - lum(c.want)) <= MAXDRIFT
     out.push({ id: c.id, got, want: c.want, gap: c.gap || null,
                ok: c.side ? onInkSide : near(got, c.want, c.tol ?? 26),
                side: !!c.side,
@@ -235,7 +249,7 @@ for (const r of rows) {
   }
   if (r.ok) {
     console.log(`  ${r.id.padEnd(22)} ok    ${r.got}` +
-                (r.side ? `  (on the ink side; ${r.drift > 0 ? '+' : ''}${r.drift} luminance light of the print — a known small-type gap)` : ''))
+                (r.side ? `  (on the ink side, ${r.drift > 0 ? '+' : ''}${r.drift} luminance off the print)` : ''))
     continue
   }
   bad++
