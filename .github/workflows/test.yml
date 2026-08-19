@@ -5,10 +5,26 @@ on:
     branches: [main, master]
   pull_request:
 
+# A newer push makes an older run pointless. Without this they queue up and the
+# badge shows a result from three commits ago.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  suite:
+    # SHARDED, because thirty-four of the forty checks boot a real Electron app
+    # and the whole sequence overran a 45-minute job every time — the badge on
+    # this repo had never gone green on a suite that passes locally. Four shards
+    # run the same forty checks in parallel; nothing is skipped, and the split is
+    # derived from the `test` script itself so a new suite cannot be forgotten.
+    strategy:
+      fail-fast: false   # one red shard must not hide what the others found
+      matrix:
+        shard: [1, 2, 3, 4]
+    name: suite ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,33 +46,24 @@ jobs:
             libasound2t64 libxshmfence1 libxdamage1 libxrandr2 libpangocairo-1.0-0 \
             libgtk-3-0 || sudo apt-get install -y libasound2
 
-      # ONE command, on purpose. This used to list six suites by hand while
-      # `npm test` ran thirty, so the badge said "passing" about a quarter of
-      # the tests — including the licence check that stops a renamed OFL font
-      # from silently reverting, which is exactly the kind of thing that only
-      # ever regresses when nobody is watching it. Whatever a contributor runs
-      # locally is now what runs here, and adding a suite to package.json is
-      # enough to have CI run it too.
-      #
-      # `npm test` builds first, deliberately: the suites drive the PACKAGED
-      # app, which loads its own bundle over the reshapedpdf:// protocol, and
-      # without a dist/ the window comes up empty and every suite fails with
-      # "cannot read properties of undefined" — which reads as broken automation
-      # hooks rather than a missing build. A laptop hides this by always having
-      # a dist/ lying around; a fresh clone does not.
-      #
-      # A single xvfb wraps the lot: every Electron suite launches its own app,
-      # and one display serves them all. Tier-2 erase cases (words baked into an
-      # image) need a vision model to read them at all; with none reachable here
-      # they SKIP with a note rather than fail, so CI stays honest instead of
+      # One xvfb for the shard: every Electron suite launches its own app and one
+      # display serves them all. Tier-2 erase cases (words baked into an image)
+      # need a vision model to read them at all; with none reachable here they
+      # SKIP with a note rather than fail, so CI stays honest instead of
       # green-by-omission.
-      - name: Full suite
-        run: xvfb-run --auto-servernum npm test
+      - name: Run shard
+        run: xvfb-run --auto-servernum node scripts/run-suites.mjs ${{ matrix.shard }} 4
 
-      - name: Upload artifacts on failure
+      - name: Keep the artefacts of a failed run
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: suite-artifacts
-          path: tests/.artifacts/
+          name: suite-${{ matrix.shard }}-artifacts
+          # The rendered PNGs — what a failing fidelity or erase check actually
+          # saw. Electron profile directories live here too and are tens of
+          # megabytes of nothing useful, so they are excluded.
+          path: |
+            tests/.artifacts/**
+            !tests/.artifacts/**/*-profile/**
+          if-no-files-found: ignore
           retention-days: 7
