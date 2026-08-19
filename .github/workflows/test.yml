@@ -56,30 +56,41 @@ jobs:
         # like someone had pressed the button, five shards reported nothing, and
         # the badge went red for a reason that had nothing to do with the code.
         #
-        # Now: per-step timeout, so a hang costs six minutes and says so; retries
-        # and per-request timeouts inside apt, so a slow mirror is retried rather
-        # than waited on; and noninteractive, so nothing can ever sit on a prompt
-        # that no one is there to answer.
-        timeout-minutes: 6
+        # ForceIPv4 is the substantive fix. These runners advertise IPv6 and the
+        # route to archive.ubuntu.com intermittently blackholes, so apt opens a
+        # connection that neither completes nor resets and waits on it — which is
+        # exactly the "slow mirror" this looked like, and why it hit some shards
+        # of a run and not others.
+        #
+        # The rest is belt and braces: try the install against the image's own
+        # package index FIRST, since the runner image ships a recent one and the
+        # update is most of the network traffic; only refresh if that fails.
+        # Per-request timeouts and retries inside apt, a step timeout so a hang
+        # names itself instead of impersonating something else, and
+        # noninteractive so nothing can sit on a prompt no one is there to answer.
+        timeout-minutes: 10
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           set -eux
-          APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
-          for attempt in 1 2 3; do
-            sudo apt-get $APT_OPTS update && break
-            echo "apt-get update failed (attempt $attempt), retrying"; sleep $((attempt * 10))
-          done
-          # libasound2t64 on noble, libasound2 before it — ask for whichever exists
-          # rather than re-running the whole install on failure, which used to
-          # double the time whenever the fallback was taken.
+          APT="sudo apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 \
+               -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
+          # libasound2t64 on noble, libasound2 before it
           ASOUND=libasound2t64
           apt-cache show "$ASOUND" >/dev/null 2>&1 || ASOUND=libasound2
-          sudo apt-get $APT_OPTS install -y --no-install-recommends \
-            poppler-utils xvfb \
-            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 \
-            "$ASOUND" libxshmfence1 libxdamage1 libxrandr2 libpangocairo-1.0-0 \
-            libgtk-3-0
+          PKGS="poppler-utils xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+                libgbm1 $ASOUND libxshmfence1 libxdamage1 libxrandr2 \
+                libpangocairo-1.0-0 libgtk-3-0"
+          if $APT install -y --no-install-recommends $PKGS; then
+            echo "installed from the image's existing package index"
+          else
+            echo "falling back to a refresh"
+            for attempt in 1 2 3; do
+              $APT update && break
+              echo "apt-get update failed (attempt $attempt)"; sleep $((attempt * 10))
+            done
+            $APT install -y --no-install-recommends $PKGS
+          fi
 
       # One xvfb for the shard: every Electron suite launches its own app and one
       # display serves them all. Tier-2 erase cases (words baked into an image)
