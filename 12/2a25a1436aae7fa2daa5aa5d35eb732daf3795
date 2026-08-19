@@ -1,0 +1,21 @@
+README.md
+  s_daa89ab6f34762::t_a67bf97a5dd5d2 24-44
+package.json
+  s_daa89ab6f34762::t_3fa7c4aa0b64c6 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "122a25a1436aae7fa2daa5aa5d35eb732daf3795",
+  "prompts": {},
+  "sessions": {
+    "s_daa89ab6f34762": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec0eee8e-423a-4cd6-9439-d123ace3245d",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Anton Arnaudov <anton.arnaudov.me@gmail.com>"
+    }
+  }
+}
