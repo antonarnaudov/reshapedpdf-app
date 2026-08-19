@@ -22,3 +22,4 @@ site/app/
 # Local benchmark documents. Real third-party files: they stay on this machine,
 # never in a commit, and therefore never in the published export.
 tests/fixtures/bench/
+dist-electron/

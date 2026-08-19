@@ -19,7 +19,7 @@
  * published.
  */
 import { existsSync, readdirSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { createRequire, builtinModules } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -60,7 +60,22 @@ for (const asar of candidates) {
   // working directory and prints nothing, so an earlier version of this check
   // read an empty stdout, saw no requires at all, and passed on the very app it
   // was written to reject.
-  const main = Buffer.from(asarApi.extractFile(asar, 'electron/main.cjs')).toString('utf8')
+  // Ask package.json inside the asar where its main process actually is, rather
+  // than assuming: it moved from electron/ to dist-electron/ the day it started
+  // being bundled, and a hardcoded path would have thrown instead of checking.
+  let mainPath = 'electron/main.cjs'
+  try {
+    const pkg = JSON.parse(Buffer.from(asarApi.extractFile(asar, 'package.json')).toString('utf8'))
+    if (pkg.main) mainPath = String(pkg.main).replace(/^\.\//, '')
+  } catch { /* fall back to the historical location */ }
+  let main
+  try {
+    main = Buffer.from(asarApi.extractFile(asar, mainPath)).toString('utf8')
+  } catch {
+    console.log(`  FAIL  ${rel} — its package.json names ${mainPath} as the main process and the asar does not contain it`)
+    bad++
+    continue
+  }
   if (!main.includes('require(')) {
     console.log(`  FAIL  ${rel} — could not read the packaged main process`)
     bad++
@@ -71,7 +86,10 @@ for (const asar of candidates) {
   const bare = [...main.matchAll(/require\(['"]([^'".][^'"]*)['"]\)/g)]
     .map((m) => m[1])
     .filter((n) => !n.startsWith('node:'))
-  const builtin = new Set(['electron', 'fs', 'path', 'os', 'child_process', 'http', 'https', 'url', 'crypto', 'zlib', 'stream', 'util', 'events', 'net', 'buffer'])
+  // Node's own list, not a hand-written one: mine omitted constants, assert and
+  // tty, and the check duly reported that the app could not start because of
+  // them. A guess about what is built in is not worth making.
+  const builtin = new Set([...builtinModules, 'electron'])
 
   const missing = [...new Set(bare)].filter((n) => {
     if (builtin.has(n)) return false
@@ -79,7 +97,12 @@ for (const asar of candidates) {
     return !files.has(`/node_modules/${root}`) && ![...files].some((f) => f.startsWith(`/node_modules/${root}/`))
   })
 
-  const ok = missing.length === 0
+  // A BUNDLED main resolves nothing at runtime, so "no missing requires" would
+  // pass on a bundle that quietly dropped the updater. Check the code is in
+  // there — this is the module whose absence shipped two broken releases.
+  const hasUpdater = /electron-updater|autoUpdater/.test(main)
+  const ok = missing.length === 0 && hasUpdater
+  if (!hasUpdater) console.log(`  (the update mechanism is not in the packaged main process)`)
   if (!ok) bad++
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${rel}`)
   console.log(`        main requires: ${[...new Set(bare)].filter((n) => !builtin.has(n)).join(', ') || '(only builtins)'}`)
