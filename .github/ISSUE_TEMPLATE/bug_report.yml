@@ -1,0 +1,36 @@
+name: Bug report
+description: Something the editor did wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this is about content surviving a redaction or an erase, please do not
+        file it here — see [SECURITY.md](../blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you got, and what you expected instead.
+      placeholder: I dragged the erase tool over a heading and the line under it vanished too.
+    validations: { required: true }
+  - type: input
+    id: file
+    attributes:
+      label: The document
+      description: >
+        If you can attach a PDF that reproduces it, that is worth more than
+        everything else combined. Please do not attach anything confidential —
+        if the file is sensitive, say so and describe its shape instead
+        (scanned or digital text, rotated pages, forms, the fonts).
+  - type: input
+    id: version
+    attributes:
+      label: Version and platform
+      placeholder: 0.1.0 · macOS 15.3 Apple Silicon · desktop app
+    validations: { required: true }
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Console output, a screenshot, whether it happens every time.

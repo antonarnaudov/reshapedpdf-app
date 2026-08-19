@@ -1,0 +1,215 @@
+{
+  "name": "reshapedpdf",
+  "productName": "ReshapedPDF",
+  "description": "ReshapedPDF — reshape any PDF. View, annotate, edit, sign, organize and export; blended edits that look like they were printed that way.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "author": "Anton Arnaudov <anton.arnaudov.pro@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/antonarnaudov/reshapedpdf-app.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --port 5173 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "desktop": "concurrently -k \"npm:dev\" \"wait-on tcp:127.0.0.1:5173 && cross-env ELECTRON_START_URL=http://127.0.0.1:5173 electron .\"",
+    "desktop:prod": "npm run build && electron .",
+    "package": "npm run build && electron-builder",
+    "test:erase": "node tests/erase-suite.mjs",
+    "test:fonts": "node tests/font-check.mjs",
+    "test:searchrot": "node tests/search-rot-check.mjs",
+    "test:rotateanno": "node tests/rotate-anno-check.mjs",
+    "test": "npm run build && npm run typecheck && npm run check:fontnames && npm run check:notices && npm run test:fonts && npm run test:winansi && npm run test:redactstream && npm run test:contentwalk && npm run test:coverform && npm run test:searchrot && npm run test:textlayerrot && npm run test:rotateanno && npm run test:peelquality && npm run test:textedit && npm run test:textfidelity && npm run test:clean && npm run test:protected && npm run test:objects && npm run test:imgfmt && npm run test:zorder && npm run test:erase && npm run test:closeguard && npm run test:history && npm run test:wrap && npm run test:forms && npm run test:fastpath && npm run test:pageexcl && npm run test:metadata && npm run test:docswitch && npm run test:detectalign && npm run test:paletteguard && npm run test:spacekey && npm run test:zoomanchor && npm run test:retypeedge && npm run test:rotrun && npm run test:outline && npm run test:liftgeom && npm run test:liftcovers && npm run test:vector && npm run test:peelelements && npm run test:textcommit && npm run test:fidelity && npm run test:sweep && npm run test:ux",
+    "test:history": "node tests/history-suite.mjs",
+    "test:wrap": "node tests/wrap-check.mjs",
+    "test:forms": "node tests/forms-suite.mjs",
+    "test:fastpath": "node tests/fastpath-check.mjs",
+    "test:docswitch": "node tests/docswitch-check.mjs",
+    "test:detectalign": "node tests/detectalign-check.mjs",
+    "test:paletteguard": "node tests/palette-guard-check.mjs",
+    "test:retypeedge": "node tests/retype-edge-check.mjs",
+    "test:ux": "node tests/ux-suite.mjs --ci",
+    "test:objects": "node tests/objects-suite.mjs",
+    "test:redactstream": "node tests/redactstream-check.mjs --ci",
+    "test:contentwalk": "node tests/contentwalk-check.mjs --ci",
+    "package:all": "npm run build && electron-builder -mwl",
+    "test:closeguard": "node tests/electron-close-check.mjs",
+    "test:imgfmt": "node tests/image-format-check.mjs",
+    "test:pageexcl": "node tests/page-exclusion-check.mjs",
+    "test:winansi": "node tests/winansi-check.mjs",
+    "test:zorder": "node tests/zorder-check.mjs",
+    "test:textlayerrot": "node tests/textlayer-rot-check.mjs",
+    "test:spacekey": "node tests/space-key-check.mjs",
+    "test:zoomanchor": "node tests/zoom-anchor-check.mjs",
+    "test:metadata": "node tests/metadata-check.mjs",
+    "test:peelquality": "node tests/peel-quality-check.mjs",
+    "test:textedit": "node tests/text-edit-check.mjs",
+    "test:clean": "node tests/clean-check.mjs",
+    "test:protected": "node tests/protected-check.mjs",
+    "check:fontnames": "node scripts/rename-modified-fonts.mjs --check",
+    "notices": "node scripts/gen-notices.mjs",
+    "check:notices": "node scripts/gen-notices.mjs --check",
+    "prepackage": "node scripts/gen-notices.mjs",
+    "test:coverform": "node tests/coverform-check.mjs",
+    "test:sweep": "node tests/bench-sweep.mjs",
+    "test:fidelity": "node tests/export-fidelity-check.mjs",
+    "test:liftgeom": "node tests/lift-geometry-check.mjs",
+    "test:textcommit": "node tests/text-commit-check.mjs",
+    "test:rotrun": "node tests/rotated-run-check.mjs",
+    "test:outline": "node tests/outline-check.mjs",
+    "test:liftcovers": "node tests/lift-covers-check.mjs",
+    "test:textfidelity": "node tests/text-fidelity-check.mjs",
+    "test:vector": "node tests/vector-lift-check.mjs",
+    "test:peelelements": "node tests/peel-elements-check.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.2.10",
+    "@fontsource-variable/hanken-grotesk": "^5.2.8",
+    "@fontsource-variable/spline-sans-mono": "^5.2.8",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "electron-updater": "^6.8.9",
+    "lucide-react": "^1.23.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vite-plugin-static-copy": "^2.1.0",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "app.reshapedpdf.desktop",
+    "productName": "ReshapedPDF",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json",
+      "!node_modules/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "antonarnaudov",
+        "repo": "reshapedpdf-app",
+        "releaseType": "release"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "maintainer": "Anton Arnaudov <anton.arnaudov.pro@gmail.com>"
+    },
+    "icon": "build/icon.png",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "npmRebuild": false,
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF document",
+        "description": "Portable Document Format",
+        "mimeType": "application/pdf",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/electron/dist/LICENSE",
+        "to": "licenses/Electron-LICENSE.txt"
+      },
+      {
+        "from": "node_modules/electron/dist/LICENSES.chromium.html",
+        "to": "licenses/Chromium-LICENSES.html"
+      },
+      {
+        "from": "THIRD-PARTY.md",
+        "to": "licenses/THIRD-PARTY.md"
+      },
+      {
+        "from": "build/NOTICES.txt",
+        "to": "licenses/NOTICES.txt"
+      },
+      {
+        "from": "LICENSE",
+        "to": "licenses/ReshapedPDF-LICENSE.txt"
+      }
+    ]
+  },
+  "homepage": "https://github.com/antonarnaudov/reshapedpdf-app"
+}

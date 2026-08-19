@@ -1,0 +1,62 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # poppler renders the exported PDFs in the erase suite, deliberately: it
+      # shares no code with the pdf.js that drew them on screen, so a fault that
+      # exists only in the written file cannot hide behind the renderer that
+      # produced it. The rest are Electron's runtime libraries, which a headless
+      # runner does not have by default.
+      - name: System deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils xvfb \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 \
+            libasound2t64 libxshmfence1 libxdamage1 libxrandr2 libpangocairo-1.0-0 \
+            libgtk-3-0 || sudo apt-get install -y libasound2
+
+      # ONE command, on purpose. This used to list six suites by hand while
+      # `npm test` ran thirty, so the badge said "passing" about a quarter of
+      # the tests — including the licence check that stops a renamed OFL font
+      # from silently reverting, which is exactly the kind of thing that only
+      # ever regresses when nobody is watching it. Whatever a contributor runs
+      # locally is now what runs here, and adding a suite to package.json is
+      # enough to have CI run it too.
+      #
+      # `npm test` builds first, deliberately: the suites drive the PACKAGED
+      # app, which loads its own bundle over the reshapedpdf:// protocol, and
+      # without a dist/ the window comes up empty and every suite fails with
+      # "cannot read properties of undefined" — which reads as broken automation
+      # hooks rather than a missing build. A laptop hides this by always having
+      # a dist/ lying around; a fresh clone does not.
+      #
+      # A single xvfb wraps the lot: every Electron suite launches its own app,
+      # and one display serves them all. Tier-2 erase cases (words baked into an
+      # image) need a vision model to read them at all; with none reachable here
+      # they SKIP with a note rather than fail, so CI stays honest instead of
+      # green-by-omission.
+      - name: Full suite
+        run: xvfb-run --auto-servernum npm test
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-artifacts
+          path: tests/.artifacts/
+          retention-days: 7

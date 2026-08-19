@@ -1,0 +1,20 @@
+
+/* ---------------- update strip ---------------- */
+/* A foot-of-window strip, not a modal: an update is never more important than
+   the document someone is in the middle of. */
+.update-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 60;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px 8px 14px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  font-size: 13px; color: var(--ink); max-width: min(680px, calc(100vw - 32px));
+}
+.update-bar b { font-weight: 600; }
+.update-bar .btn.sm { height: 24px; padding: 0 10px; font-size: 12px; }
+.update-bar .icon-btn.sm { width: 24px; height: 24px; }
+.update-progress {
+  width: 120px; height: 4px; border-radius: 2px; overflow: hidden;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+.update-progress > div { height: 100%; background: var(--accent); transition: width 140ms linear; }

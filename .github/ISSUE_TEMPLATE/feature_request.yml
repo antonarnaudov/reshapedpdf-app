@@ -1,0 +1,22 @@
+name: Feature request
+description: Something the editor should be able to do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you actually trying to get done? Describe the document and the
+        job, not the feature — the best solution is often not the one either of
+        us thought of first.
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you had in mind
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today instead
+      description: Including "I pay for Acrobat for this one thing", which is useful to know.

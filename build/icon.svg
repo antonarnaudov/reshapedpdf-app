@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="heat" x1="0" y1="0" x2="1" y2="0.35">
+      <stop offset="0" stop-color="#FF5C1F"/><stop offset="1" stop-color="#FFB454"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#23262E"/><stop offset="1" stop-color="#14161B"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7.2" fill="url(#bg)"/>
+  <g transform="translate(1.6 0.4) scale(0.94)">
+    <path fill="#EFECE4" d="M10 2 H19 L26 9 V28 Q26 30 24 30 H10 Q8 30 8 28 V4 Q8 2 10 2 Z"/>
+    <path fill="#D7D2C6" d="M19 2 L26 9 H19 Z"/>
+    <rect x="11" y="7" width="5" height="1.7" rx="0.85" fill="#B9B3A6"/>
+    <rect x="11" y="11" width="12" height="1.7" rx="0.85" fill="#B9B3A6"/>
+    <rect x="11" y="25" width="9" height="1.7" rx="0.85" fill="#C6C0B3"/>
+    <path fill="#A63E10" d="M5 22.6 L8 22.6 L8 24.6 Z"/>
+    <rect x="5" y="15" width="19" height="7.6" rx="1.6" fill="url(#heat)"/>
+    <text x="14.5" y="20.8" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+          font-weight="800" font-size="5.8" letter-spacing="0.45" fill="#FFFFFF">PDF</text>
+  </g>
+</svg>

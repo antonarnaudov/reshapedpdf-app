@@ -1,0 +1,87 @@
+name: release
+
+# A tag is the only thing that ships. Pushing v1.2.3 builds every platform,
+# publishes one GitHub Release, and — because electron-builder writes the
+# latest*.yml manifests beside the installers — every already-installed copy of
+# the app finds it on its next launch.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build the installers but publish nothing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # to create the release and upload to it
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false   # a broken Windows runner must not bin the macOS build
+      matrix:
+        include:
+          - os: macos-14
+            name: macOS
+          - os: windows-latest
+            name: Windows
+          - os: ubuntu-latest
+            name: Linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The version in package.json is the source of truth for the updater, so a
+      # tag that disagrees with it would ship a release the app can never see as
+      # newer. Fail here rather than after three platform builds.
+      - name: Tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          echo "tag=$TAG package.json=$PKG"
+          test "$TAG" = "$PKG" || { echo "::error::tag v$TAG does not match package.json $PKG"; exit 1; }
+
+      - run: npm run build
+      - run: npm run notices
+
+      - name: Package and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Unsigned unless the certificates are present. Hardcoding this false
+          # meant adding CSC_LINK would have changed nothing and shipped an
+          # unsigned build anyway, silently.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then PUBLISH=always; else PUBLISH=never; fi
+          echo "publish=$PUBLISH"
+          npx electron-builder --publish "$PUBLISH"
+
+      - name: Keep the installers even when nothing is published
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-installers
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/latest*.yml
+          if-no-files-found: warn
+          retention-days: 14
