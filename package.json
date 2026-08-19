@@ -2,7 +2,7 @@
   "name": "reshapedpdf",
   "productName": "ReshapedPDF",
   "description": "ReshapedPDF — reshape any PDF. View, annotate, edit, sign, organize and export; blended edits that look like they were printed that way.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",

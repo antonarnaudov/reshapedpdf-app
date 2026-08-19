@@ -18,11 +18,16 @@
  * and no window, so it can run on every platform in CI before anything is
  * published.
  */
-import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readdirSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+// The asar node API rather than `npx asar`: on Windows npx is npx.cmd, which
+// execFileSync cannot find without a shell, and the check died there having
+// proved nothing about the Windows build — the one platform none of us runs.
+const require_ = createRequire(import.meta.url)
+const asarApi = require_('@electron/asar')
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
@@ -49,18 +54,13 @@ if (!candidates.length) {
 let bad = 0
 for (const asar of candidates) {
   const rel = asar.slice(ROOT.length + 1)
-  const list = execFileSync('npx', ['--yes', 'asar', 'list', asar], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-  const files = new Set(list.split('\n').map((l) => l.trim()).filter(Boolean))
+  const files = new Set(asarApi.listPackage(asar))
 
-  // `asar extract-file` WRITES the file into the working directory; it prints
-  // nothing. Reading its stdout gives an empty string, every require goes
-  // unnoticed, and this check passes on an app that cannot start — which is the
-  // first thing it did.
-  const tmp = mkdtempSync(join(tmpdir(), 'rpdf-asar-'))
-  execFileSync('npx', ['--yes', 'asar', 'extract-file', asar, 'electron/main.cjs'],
-    { stdio: ['ignore', 'ignore', 'ignore'], cwd: tmp })
-  const main = readFileSync(join(tmp, 'main.cjs'), 'utf8')
-  rmSync(tmp, { recursive: true, force: true })
+  // extractFile returns the BYTES. The CLI's extract-file writes a file into the
+  // working directory and prints nothing, so an earlier version of this check
+  // read an empty stdout, saw no requires at all, and passed on the very app it
+  // was written to reject.
+  const main = Buffer.from(asarApi.extractFile(asar, 'electron/main.cjs')).toString('utf8')
   if (!main.includes('require(')) {
     console.log(`  FAIL  ${rel} — could not read the packaged main process`)
     bad++
