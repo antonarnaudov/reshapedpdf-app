@@ -209,3 +209,28 @@ and `spctl -a -vvv -t install release/mac-arm64/ReshapedPDF.app`.
 Built with pdf.js (Apache-2.0), pdf-lib (MIT), React, Zustand, Vite, Electron and Lucide icons,
 on top of 21 open typefaces. Every dependency and every face, with its licence, is listed in
 [THIRD-PARTY.md](THIRD-PARTY.md) and [public/fonts/LICENSES.md](public/fonts/LICENSES.md).
+
+## 💚 Sponsors & Supporters
+
+ReshapedPDF is free and open source. The AI tokens, hosting and tooling behind it come out of my own pocket — sponsoring covers those costs and moves your issues and feature requests up the queue.
+
+**[Become a sponsor →](https://github.com/sponsors/antonarnaudov)**
+
+### 🏢 Company sponsors
+
+<!-- $100/mo and $250 one-time sponsors: company logo + link -->
+
+_Your company's logo could be here._
+
+### ⭐ Sponsors
+
+<!-- $50+ sponsors: avatar + link -->
+
+_Be the first._
+
+### 📜 Supporters
+
+<!-- $10+ sponsors: name -->
+
+_Be the first._
+
